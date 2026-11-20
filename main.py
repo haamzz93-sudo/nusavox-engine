@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from pydantic import BaseModel, Field
 
-from engine.synthesizer import NusaVoxSynthesizer
+from engine.synthesizer import NusaVoxSynthesizer, convert_to_pcm_wav
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROFILES_DIR = os.path.join(BASE_DIR, "profiles")
@@ -126,12 +126,26 @@ async def upload_voice_profile(
     if orig_ext not in [".wav", ".mp3", ".ogg", ".m4a", ".webm"]:
         orig_ext = ".wav"
 
-    target_filename = f"{slug_id}{orig_ext}"
+    temp_raw_filename = f"{slug_id}_raw{orig_ext}"
+    temp_raw_path = os.path.join(PROFILES_DIR, temp_raw_filename)
+    target_filename = f"{slug_id}.wav"
     target_path = os.path.join(PROFILES_DIR, target_filename)
 
-    # Save uploaded file
-    with open(target_path, "wb") as buffer:
+    # Save raw uploaded file
+    with open(temp_raw_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
+
+    # Standardize to 16-bit 24kHz PCM WAV via ffmpeg
+    clean_path = convert_to_pcm_wav(temp_raw_path)
+    if os.path.exists(clean_path):
+        if clean_path != target_path:
+            shutil.copyfile(clean_path, target_path)
+            if clean_path != temp_raw_path:
+                try: os.remove(clean_path)
+                except Exception: pass
+        if temp_raw_path != target_path:
+            try: os.remove(temp_raw_path)
+            except Exception: pass
 
     # Read profiles.json
     profiles_data = {"engine_name": "NusaVox Neural Engine", "version": "1.1.0", "profiles": []}

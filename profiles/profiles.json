@@ -37,6 +37,19 @@
       "default_rate": "+0%",
       "category": "customer-service",
       "is_custom": false
+    },
+    {
+      "id": "ham",
+      "name": "ham",
+      "description": "Kloning suara kustom: ham",
+      "gender": "male",
+      "language": "id-ID",
+      "sample_file": "ham.wav",
+      "default_pitch": "-2Hz",
+      "default_rate": "-1%",
+      "category": "custom-clone",
+      "is_custom": true,
+      "created_at": 1795176496
     }
   ]
 }

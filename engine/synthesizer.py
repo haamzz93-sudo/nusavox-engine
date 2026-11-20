@@ -9,6 +9,7 @@ import json
 import hashlib
 import asyncio
 import logging
+import subprocess
 from typing import Optional, Tuple
 
 logger = logging.getLogger("nusavox.synthesizer")
@@ -20,6 +21,39 @@ os.makedirs(CACHE_DIR, exist_ok=True)
 os.makedirs(PROFILES_DIR, exist_ok=True)
 
 from .normalizer import normalize_indonesian_speech
+
+def get_ffmpeg_binary() -> str:
+    fdm_ffmpeg = r"C:\Program Files\Softdeluxe\Free Download Manager\ffmpeg.exe"
+    if os.path.exists(fdm_ffmpeg):
+        return fdm_ffmpeg
+    return "ffmpeg"
+
+def convert_to_pcm_wav(file_path: str) -> str:
+    """
+    Ensures the audio file is a valid 16-bit 24kHz mono PCM WAV readable by libsndfile/librosa.
+    If already valid, returns the original path. If not, converts via ffmpeg.
+    """
+    try:
+        import soundfile as sf
+        sf.read(file_path)
+        return file_path
+    except Exception:
+        pass
+
+    ffmpeg_bin = get_ffmpeg_binary()
+    out_path = file_path.rsplit(".", 1)[0] + "_pcm.wav"
+    try:
+        cmd = [
+            ffmpeg_bin, "-y", "-i", file_path,
+            "-ar", "24000", "-ac", "1", "-c:a", "pcm_s16le",
+            out_path
+        ]
+        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=20)
+        if res.returncode == 0 and os.path.exists(out_path) and os.path.getsize(out_path) > 1000:
+            return out_path
+    except Exception as e:
+        logger.warning(f"Audio conversion failed: {e}")
+    return file_path
 
 class NusaVoxSynthesizer:
     def __init__(self):
@@ -74,14 +108,16 @@ class NusaVoxSynthesizer:
         return self.neural_model
 
     def _get_voice_clone_prompt(self, ref_audio_path: str):
-        if ref_audio_path not in self.prompt_cache:
+        clean_audio_path = convert_to_pcm_wav(ref_audio_path)
+        if clean_audio_path not in self.prompt_cache:
             model = self._get_neural_model()
-            logger.info(f"Extracting vocal embedding from: {ref_audio_path}")
+            logger.info(f"Extracting vocal embedding from: {clean_audio_path}")
             prompt = model.create_voice_clone_prompt(
-                ref_audio=ref_audio_path,
+                ref_audio=clean_audio_path,
                 ref_text="",
                 x_vector_only_mode=True
             )
+            self.prompt_cache[clean_audio_path] = prompt
             self.prompt_cache[ref_audio_path] = prompt
         return self.prompt_cache[ref_audio_path]
 
@@ -141,7 +177,7 @@ class NusaVoxSynthesizer:
                     f.write(audio_bytes)
                 return audio_bytes, False, normalized, media_type
             except Exception as e:
-                logger.warning(f"Neural cloning encountered error, falling back to acoustic: {e}")
+                logger.error(f"Neural cloning encountered error: {e}", exc_info=True)
 
         # 2B. Acoustic Generator (Edge-TTS Fallback for 24/7 VPS compatibility)
         import edge_tts
