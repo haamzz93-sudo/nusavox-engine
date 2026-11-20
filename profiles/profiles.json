@@ -1,0 +1,37 @@
+{
+  "engine_name": "NusaVox Neural Engine",
+  "version": "1.0.0",
+  "profiles": [
+    {
+      "id": "bupati-madiun",
+      "name": "Bapak Bupati Madiun (H. Hari Wuryanto)",
+      "description": "Suara resmi pemimpin daerah berwibawa, tegas, ramah, dan santun khas birokrasi pelayanan publik Jawa Timur.",
+      "gender": "male",
+      "language": "id-ID",
+      "sample_file": "bupati_madiun.wav",
+      "default_pitch": "-3Hz",
+      "default_rate": "-2%",
+      "category": "civic-executive"
+    },
+    {
+      "id": "civic-formal-male",
+      "name": "Narator Pelayanan Publik Formal (Pria)",
+      "description": "Artikulasi jernih dan berwibawa untuk panduan SOP dan regulasi resmi perizinan.",
+      "gender": "male",
+      "language": "id-ID",
+      "default_pitch": "-1Hz",
+      "default_rate": "-1%",
+      "category": "civic-formal"
+    },
+    {
+      "id": "civic-friendly-female",
+      "name": "Asisten Helpdesk MPP (Wanita)",
+      "description": "Suara ramah, santun, dan menenangkan untuk layanan pelanggan dan panduan umum.",
+      "gender": "female",
+      "language": "id-ID",
+      "default_pitch": "+0Hz",
+      "default_rate": "+0%",
+      "category": "customer-service"
+    }
+  ]
+}
