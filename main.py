@@ -45,12 +45,16 @@ class OpenAISpeechRequest(BaseModel):
     voice: Optional[str] = Field("bupati-madiun", description="Voice profile ID (e.g. bupati-madiun)")
     response_format: Optional[str] = "mp3"
     speed: Optional[float] = 1.0
+    pitch: Optional[str] = None
+    rate: Optional[str] = None
+    engine_mode: Optional[str] = "studio"
 
 class DirectSynthesizeRequest(BaseModel):
     text: str = Field(..., description="Text to convert to speech")
     voice: Optional[str] = Field("bupati-madiun", description="Voice profile identifier")
     pitch: Optional[str] = None
     rate: Optional[str] = None
+    engine_mode: Optional[str] = "studio"
 
 def slugify(text: str) -> str:
     text = text.lower().strip()
@@ -254,7 +258,10 @@ async def openai_speech_endpoint(req: OpenAISpeechRequest):
     try:
         audio_bytes, is_cached, normalized_text, media_type = await synthesizer.synthesize(
             raw_text=req.input,
-            profile_id=req.voice or "bupati-madiun"
+            profile_id=req.voice or "bupati-madiun",
+            pitch=req.pitch,
+            rate=req.rate,
+            engine_mode=req.engine_mode or "studio"
         )
         return Response(
             content=audio_bytes,
@@ -281,7 +288,8 @@ async def direct_synthesize(req: DirectSynthesizeRequest):
             raw_text=req.text,
             profile_id=req.voice or "bupati-madiun",
             pitch=req.pitch,
-            rate=req.rate
+            rate=req.rate,
+            engine_mode=req.engine_mode or "studio"
         )
         return Response(
             content=audio_bytes,
@@ -377,6 +385,48 @@ def index_web_studio():
             <select id="voiceSelect" onchange="onVoiceSelected()" class="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-amber-500 text-slate-100">
               <option value="bupati-madiun">Memuat suara...</option>
             </select>
+          </div>
+
+          <!-- Mode Kualitas Suara -->
+          <div>
+            <div class="flex items-center justify-between mb-1.5">
+              <label class="text-xs font-medium text-slate-300">Mode Engine Sintesis</label>
+              <span id="engineTip" class="text-[10px] text-emerald-400">Rekomendasi Terbaik</span>
+            </div>
+            <div class="flex bg-slate-900 p-1 rounded-xl border border-slate-800">
+              <button id="btnModeStudio" type="button" onclick="setEngineMode('studio')" class="flex-1 py-1.5 rounded-lg text-xs font-semibold bg-amber-500 text-slate-950 transition-all">
+                🌟 Studio HD (Jernih & Alami)
+              </button>
+              <button id="btnModeClone" type="button" onclick="setEngineMode('clone')" class="flex-1 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-100 transition-all">
+                🧪 Zero-Shot GPU (Clone)
+              </button>
+            </div>
+          </div>
+
+          <!-- Pitch & Speed Calibration -->
+          <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-800 space-y-2">
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <div class="flex items-center justify-between text-[11px] mb-1">
+                  <span class="text-slate-300">Nada (Pitch):</span>
+                  <span id="pitchDisplay" class="font-mono text-amber-400 font-bold">-8Hz</span>
+                </div>
+                <input type="range" id="pitchSlider" min="-12" max="6" value="-8" step="1" oninput="onPitchChange(this.value)" class="w-full accent-amber-500">
+              </div>
+              <div>
+                <div class="flex items-center justify-between text-[11px] mb-1">
+                  <span class="text-slate-300">Tempo (Rate):</span>
+                  <span id="rateDisplay" class="font-mono text-amber-400 font-bold">-4%</span>
+                </div>
+                <input type="range" id="rateSlider" min="-10" max="10" value="-4" step="1" oninput="onRateChange(this.value)" class="w-full accent-amber-500">
+              </div>
+            </div>
+            <div class="flex items-center gap-1.5 pt-1 text-[10px]">
+              <span class="text-slate-500">Preset:</span>
+              <button type="button" onclick="applyPreset('-8Hz', '-4%')" class="px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 border border-amber-500/20 font-semibold">👑 Bariton Pak Bupati</button>
+              <button type="button" onclick="applyPreset('-3Hz', '-2%')" class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 hover:bg-slate-700">🏛️ Formal</button>
+              <button type="button" onclick="applyPreset('+0Hz', '+0%')" class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 hover:bg-slate-700">🎙️ Standar</button>
+            </div>
           </div>
 
           <!-- Quick Samples -->
@@ -569,11 +619,55 @@ def index_web_studio():
   <script>
     let voicesData = [];
     let currentInputMode = 'upload';
+    let currentEngineMode = 'studio';
+    let currentPitch = '-8Hz';
+    let currentRate = '-4%';
     let mediaRecorder = null;
     let recordedChunks = [];
     let recordedBlob = null;
     let recordInterval = null;
     let recordSeconds = 0;
+
+    function setEngineMode(mode) {
+      currentEngineMode = mode;
+      const btnStudio = document.getElementById('btnModeStudio');
+      const btnClone = document.getElementById('btnModeClone');
+      const tip = document.getElementById('engineTip');
+      if (mode === 'studio') {
+        btnStudio.className = 'flex-1 py-1.5 rounded-lg text-xs font-semibold bg-amber-500 text-slate-950 transition-all';
+        btnClone.className = 'flex-1 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-100 transition-all';
+        tip.textContent = '🌟 Suara Jernih & Alami (Studio HD)';
+        tip.className = 'text-[10px] text-emerald-400';
+      } else {
+        btnClone.className = 'flex-1 py-1.5 rounded-lg text-xs font-semibold bg-amber-500 text-slate-950 transition-all';
+        btnStudio.className = 'flex-1 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-100 transition-all';
+        tip.textContent = '🧪 Eksperimental GPU Zero-Shot';
+        tip.className = 'text-[10px] text-amber-400';
+      }
+    }
+
+    function onPitchChange(val) {
+      const num = parseInt(val);
+      const p = (num > 0 ? '+' : '') + num + 'Hz';
+      currentPitch = p;
+      document.getElementById('pitchDisplay').textContent = p;
+    }
+
+    function onRateChange(val) {
+      const num = parseInt(val);
+      const r = (num > 0 ? '+' : '') + num + '%';
+      currentRate = r;
+      document.getElementById('rateDisplay').textContent = r;
+    }
+
+    function applyPreset(p, r) {
+      currentPitch = p;
+      currentRate = r;
+      document.getElementById('pitchDisplay').textContent = p;
+      document.getElementById('rateDisplay').textContent = r;
+      document.getElementById('pitchSlider').value = parseInt(p.replace('Hz', ''));
+      document.getElementById('rateSlider').value = parseInt(r.replace('%', ''));
+    }
 
     // Switch Tabs
     function switchTab(tab) {
@@ -655,6 +749,16 @@ def index_web_studio():
       const vid = document.getElementById('voiceSelect').value;
       const v = voicesData.find(x => x.id === vid);
       if (!v) return;
+
+      if (vid === 'bupati-madiun') {
+        applyPreset('-8Hz', '-4%');
+        setEngineMode('studio');
+      } else if (v.gender === 'female') {
+        applyPreset('+0Hz', '+0%');
+        setEngineMode('studio');
+      } else if (v.default_pitch && v.default_rate) {
+        applyPreset(v.default_pitch, v.default_rate);
+      }
 
       document.getElementById('detailName').textContent = v.name;
       document.getElementById('detailDesc').textContent = v.description || 'Tanpa keterangan.';
@@ -903,7 +1007,13 @@ def index_web_studio():
         const res = await fetch('/v1/audio/speech', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ input: text, voice: voice })
+          body: JSON.stringify({
+            input: text,
+            voice: voice,
+            pitch: currentPitch,
+            rate: currentRate,
+            engine_mode: currentEngineMode
+          })
         });
 
         if (!res.ok) {

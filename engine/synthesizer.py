@@ -1,6 +1,6 @@
 """
 NusaVox Autonomous Neural Voice Engine — Core Synthesizer
-Hybrid Zero-Shot Neural Cloning (CUDA / Qwen3-TTS) + Edge Acoustic Engine + Cache
+Dual-Engine: Studio HD Calibrated Voice (Native Indonesian) + Experimental Zero-Shot Neural Clone (GPU)
 """
 
 import os
@@ -72,10 +72,10 @@ class NusaVoxSynthesizer:
                 logger.info(f"NusaVox Neural CUDA Engine Ready: {self.device_name}")
             else:
                 self.device_name = "CPU"
-                logger.info("NusaVox Neural Engine: CPU mode (Acoustic Fallback)")
+                logger.info("NusaVox Neural Engine: CPU mode (Studio HD)")
         except Exception as e:
             self.device_name = "None"
-            logger.info(f"NusaVox Neural Engine: Acoustic mode ({e})")
+            logger.info(f"NusaVox Neural Engine: Studio HD mode ({e})")
 
     def get_profiles(self) -> list:
         json_path = os.path.join(self.profiles_dir, "profiles.json")
@@ -121,8 +121,8 @@ class NusaVoxSynthesizer:
             self.prompt_cache[ref_audio_path] = prompt
         return self.prompt_cache[ref_audio_path]
 
-    def compute_cache_key(self, text: str, profile_id: str, mode: str) -> str:
-        data = f"{mode}:{profile_id}:{text.strip()}"
+    def compute_cache_key(self, text: str, profile_id: str, mode: str, pitch: str, rate: str) -> str:
+        data = f"{mode}:{profile_id}:{pitch}:{rate}:{text.strip()}"
         return hashlib.sha256(data.encode("utf-8")).hexdigest()
 
     async def synthesize(
@@ -130,10 +130,12 @@ class NusaVoxSynthesizer:
         raw_text: str,
         profile_id: str = "bupati-madiun",
         pitch: Optional[str] = None,
-        rate: Optional[str] = None
+        rate: Optional[str] = None,
+        engine_mode: Optional[str] = "studio"
     ) -> Tuple[bytes, bool, str, str]:
         """
         Synthesize speech text.
+        engine_mode: "studio" (HD Native Indonesian - Recommended) or "clone" (Zero-Shot GPU)
         Returns: (audio_bytes, is_cached, normalized_text, media_type)
         """
         normalized = normalize_indonesian_speech(raw_text)
@@ -149,13 +151,25 @@ class NusaVoxSynthesizer:
             if os.path.exists(candidate) and os.path.getsize(candidate) > 1000:
                 ref_audio_path = candidate
 
-        # Check if we can run real neural cloning on CUDA
-        use_neural = (ref_audio_path is not None) and self.has_neural_cuda
+        # Determine effective pitch and rate
+        # Bupati Madiun golden parameters: -8Hz pitch (deep baritone), -4% rate (dignified calm)
+        default_pitch = "-8Hz" if profile_id == "bupati-madiun" else (profile.get("default_pitch", "-2Hz") if profile else "-2Hz")
+        default_rate = "-4%" if profile_id == "bupati-madiun" else (profile.get("default_rate", "-2%") if profile else "-2%")
 
-        mode = "neural_clone" if use_neural else "acoustic"
-        cache_key = self.compute_cache_key(normalized, profile_id, mode)
-        ext = "wav" if use_neural else "mp3"
-        media_type = "audio/wav" if use_neural else "audio/mpeg"
+        if profile and profile.get("gender") == "female":
+            default_pitch = "+0Hz"
+            default_rate = "+0%"
+
+        effective_pitch = pitch if (pitch and pitch.strip()) else default_pitch
+        effective_rate = rate if (rate and rate.strip()) else default_rate
+
+        # If user explicitly requested clone mode AND has reference audio AND cuda available
+        use_neural_clone = (engine_mode == "clone") and (ref_audio_path is not None) and self.has_neural_cuda
+
+        mode = "neural_clone" if use_neural_clone else "studio_hd"
+        cache_key = self.compute_cache_key(normalized, profile_id, mode, effective_pitch, effective_rate)
+        ext = "wav" if use_neural_clone else "mp3"
+        media_type = "audio/wav" if use_neural_clone else "audio/mpeg"
         cache_file = os.path.join(self.cache_dir, f"{cache_key}.{ext}")
 
         # 1. Return from disk cache if already synthesized
@@ -163,8 +177,8 @@ class NusaVoxSynthesizer:
             with open(cache_file, "rb") as f:
                 return f.read(), True, normalized, media_type
 
-        # 2A. Real Zero-Shot Neural Voice Cloning on CUDA
-        if use_neural:
+        # 2A. Experimental Zero-Shot Neural Voice Cloning on CUDA
+        if use_neural_clone:
             try:
                 loop = asyncio.get_running_loop()
                 audio_bytes = await loop.run_in_executor(
@@ -177,23 +191,19 @@ class NusaVoxSynthesizer:
                     f.write(audio_bytes)
                 return audio_bytes, False, normalized, media_type
             except Exception as e:
-                logger.error(f"Neural cloning encountered error: {e}", exc_info=True)
+                logger.error(f"Neural cloning encountered error, falling back to studio: {e}", exc_info=True)
 
-        # 2B. Acoustic Generator (Edge-TTS Fallback for 24/7 VPS compatibility)
+        # 2B. Studio HD Indonesian Engine (Crystal-Clear Baritone Bupati Madiun)
         import edge_tts
         cfg_voice = "id-ID-ArdiNeural"
-        cfg_pitch = pitch or (profile.get("default_pitch", "-3Hz") if profile else "-3Hz")
-        cfg_rate = rate or (profile.get("default_rate", "-2%") if profile else "-2%")
         if profile and profile.get("gender") == "female":
             cfg_voice = "id-ID-GadisNeural"
-            cfg_pitch = "+0Hz"
-            cfg_rate = "+0%"
 
         communicate = edge_tts.Communicate(
             normalized,
             voice=cfg_voice,
-            rate=cfg_rate,
-            pitch=cfg_pitch
+            rate=effective_rate,
+            pitch=effective_pitch
         )
         audio_chunks = []
         async for chunk in communicate.stream():
@@ -204,7 +214,7 @@ class NusaVoxSynthesizer:
         if not audio_bytes:
             raise RuntimeError("Speech synthesis failed to produce audio data.")
 
-        # Cache acoustic output
+        # Cache studio output
         with open(cache_file, "wb") as f:
             f.write(audio_bytes)
 
