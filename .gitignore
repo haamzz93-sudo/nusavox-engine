@@ -23,7 +23,9 @@ wheels/
 .venv
 venv/
 ENV/
-storage/cache/*.mp3
+storage/cache/*
+storage/*.wav
+storage/*.mp3
 nusavox.log
 .DS_Store
 Thumbs.db

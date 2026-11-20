@@ -8,10 +8,11 @@
       "description": "Suara resmi pemimpin daerah berwibawa, tegas, ramah, dan santun khas birokrasi pelayanan publik Jawa Timur.",
       "gender": "male",
       "language": "id-ID",
-      "sample_file": "bupati_madiun.wav",
+      "sample_file": "bupati_madiun_clean.wav",
       "default_pitch": "-3Hz",
       "default_rate": "-2%",
-      "category": "civic-executive"
+      "category": "civic-executive",
+      "is_custom": false
     },
     {
       "id": "civic-formal-male",
@@ -19,9 +20,11 @@
       "description": "Artikulasi jernih dan berwibawa untuk panduan SOP dan regulasi resmi perizinan.",
       "gender": "male",
       "language": "id-ID",
+      "sample_file": null,
       "default_pitch": "-1Hz",
       "default_rate": "-1%",
-      "category": "civic-formal"
+      "category": "civic-formal",
+      "is_custom": false
     },
     {
       "id": "civic-friendly-female",
@@ -29,9 +32,11 @@
       "description": "Suara ramah, santun, dan menenangkan untuk layanan pelanggan dan panduan umum.",
       "gender": "female",
       "language": "id-ID",
+      "sample_file": null,
       "default_pitch": "+0Hz",
       "default_rate": "+0%",
-      "category": "customer-service"
+      "category": "customer-service",
+      "is_custom": false
     }
   ]
 }
